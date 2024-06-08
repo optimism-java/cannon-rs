@@ -39,10 +39,10 @@ pub struct InstrumentedState<O: Write, E: Write, P: PreimageOracle> {
 }
 
 impl<O, E, P> InstrumentedState<O, E, P>
-where
-    O: Write,
-    E: Write,
-    P: PreimageOracle,
+    where
+        O: Write,
+        E: Write,
+        P: PreimageOracle,
 {
     pub fn new(state: State, oracle: P, std_out: O, std_err: E) -> Self {
         Self {
@@ -186,8 +186,8 @@ mod test {
                         assert_eq!(END_ADDR, ins.state.pc, "must reach end");
                         let mut state = ins.state.memory;
                         let (done, result) = (
-                            state.get_memory((BASE_ADDR_END) as Address).unwrap(),
-                            state.get_memory((BASE_ADDR_END + 8) as Address).unwrap(),
+                            state.get_memory_b4((BASE_ADDR_END + 4) as Address).unwrap(),
+                            state.get_memory_b4((BASE_ADDR_END + 8) as Address).unwrap(),
                         );
                         assert_eq!(done, 1, "must set done to 1");
                         assert_eq!(result, 1, "must have success result {:?}", f.file_name());

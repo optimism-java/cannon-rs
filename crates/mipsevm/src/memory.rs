@@ -300,9 +300,9 @@ impl Memory {
     #[inline(always)]
     pub fn set_memory(&mut self, address: Address, value: u64) -> Result<()> {
         // Address must be aligned to 8 bytes
-        if address & 0x7 != 0 {
-            anyhow::bail!("Unaligned memory access: {:x}", address);
-        }
+        // if address & 0x7 != 0 {
+        //     anyhow::bail!("Unaligned memory access: {:x}", address);
+        // }
 
         let page_index = address as PageIndex >> page::PAGE_ADDRESS_SIZE as u64;
         let page_address = address as usize & page::PAGE_ADDRESS_MASK;
@@ -340,9 +340,9 @@ impl Memory {
     #[inline(always)]
     pub fn get_memory(&mut self, address: Address) -> Result<u64> {
         // Address must be aligned to 8 bytes
-        if address & 0x7 != 0 {
-            anyhow::bail!("Unaligned memory access: {:x}", address);
-        }
+        // if address & 0x7 != 0 {
+        //     anyhow::bail!("Unaligned memory access: {:x}", address);
+        // }
 
         match self.page_lookup(address as u64 >> page::PAGE_ADDRESS_SIZE as u64) {
             Some(page) => {

@@ -9,6 +9,7 @@ use crate::{
 };
 use anyhow::Result;
 use std::io::{self, BufReader, Read, Write};
+use crate::test_utils::BASE_ADDR_END;
 
 impl<O, E, P> InstrumentedState<O, E, P>
     where
@@ -74,7 +75,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
     ///
     /// ### Returns
     /// - A [Result] indicating if the step was successful.
-    #[inline(always)]
+    // #[inline(always)]
     pub(crate) fn inner_step(&mut self) -> Result<()> {
         if self.state.exited {
             return Ok(());
@@ -229,7 +230,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                     }
                 }
                 Syscall::Brk => {
-                    v0 = 0x4000000000000000;
+                    v0 = 0x40000000;
                 }
                 Syscall::Clone => {
                     // Clone is not supported, set the virtual register to 1.
@@ -276,7 +277,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                         v0 = a2;
                     }
                     _ => {
-                        v0 = 0xFFFFFFFF;
+                        v0 = 0xFFFFFFFFFFFFFFFF;
                         v1 = MIPS_EBADF;
                     }
                 },
@@ -482,7 +483,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
             }
             0x18 => {
                 // mult
-                let acc = ((rs as i32) as i64) as u64 * ((rt as i32) as i64) as u64;
+                let acc = ((rs as i32) * (rt as i32)) as u64;
                 self.state.hi = acc >> 32;
                 self.state.lo = (acc as u32) as u64;
                 0
@@ -502,8 +503,8 @@ impl<O, E, P> InstrumentedState<O, E, P>
             }
             0x1b => {
                 // divu
-                self.state.hi = rs % rt;
-                self.state.lo = rs / rt;
+                self.state.hi = (rs as u32 % rt as u32) as u64;
+                self.state.lo = (rs as u32 / rt as u32) as u64;
                 0
             }
             _ => 0,
@@ -684,7 +685,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                 0x22 => {
                     let sl = (rs & 0x3) << 3;
                     let val = ((mem >> (32 - ((rs & 0x4) << 3))) & 0xFFFFFFFF) << sl;
-                    let mask = (0xFFFFFFFFu32 << sl) as u64;
+                    let mask = 0xFFFFFFFFu64 << sl;
                     Ok((rt & !mask) | val)
                 }
                 // lw / ll
