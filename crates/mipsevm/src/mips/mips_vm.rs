@@ -483,16 +483,16 @@ impl<O, E, P> InstrumentedState<O, E, P>
             }
             0x18 => {
                 // mult
-                let acc = ((rs as i32) * (rt as i32)) as u64;
-                self.state.hi = acc >> 32;
-                self.state.lo = (acc as u32) as u64;
+                let acc = ((rs as i32) as i64) as u64 * ((rt as i32) as i64) as u64;
+                self.state.hi = sign_extend(acc >> 32, 32);
+                self.state.lo = sign_extend((acc as u32) as u64, 32);
                 0
             }
             0x19 => {
                 // multu
-                let acc = rs * rt;
-                self.state.hi = acc >> 32;
-                self.state.lo = (acc as u32) as u64;
+                let acc = (rs as u32) as u64 * (rt as u32) as u64;
+                self.state.hi = sign_extend(acc >> 32, 32);
+                self.state.lo = sign_extend((acc as u32) as u64, 32);
                 0
             }
             0x1a => {
@@ -644,9 +644,9 @@ impl<O, E, P> InstrumentedState<O, E, P>
                 // nor
                 0x27 => Ok(!(rs | rt)),
                 // slti
-                0x2a => Ok((((rs as i32) as i64) < ((rt as i32) as i64)) as u64),
+                0x2a => Ok(((rs as i32) < (rt as i32)) as u64),
                 // sltiu
-                0x2b => Ok((rs < rt) as u64),
+                0x2b => Ok(((rs as u32) < (rt as u32)) as u64),
                 _ => anyhow::bail!("Invalid function code {:x}", fun),
             }
         } else {
@@ -684,8 +684,8 @@ impl<O, E, P> InstrumentedState<O, E, P>
                 // lwl
                 0x22 => {
                     let sl = (rs & 0x3) << 3;
-                    let val = ((mem >> (32 - ((rs & 0x4) << 3))) & 0xFFFFFFFF) << sl;
-                    let mask = 0xFFFFFFFFu64 << sl;
+                    let val = ((mem >> (32 - ((rs & 0x4) << 3))) << sl) & 0xFFFFFFFF;
+                    let mask = (0xFFFFFFFFu32 << sl) as u64;
                     Ok((rt & !mask) | val)
                 }
                 // lw / ll
@@ -697,7 +697,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                 // lwr
                 0x26 => {
                     let sr = 24 - ((rs & 0x3) << 3);
-                    let val = ((mem >> (32 - ((rs & 0x4) << 3))) & 0xFFFFFFFF) >> sr;
+                    let val = ((mem >> (32 - ((rs & 0x4) << 3))) >> sr) & 0xFFFFFFFF;
                     let mask = (0xFFFFFFFFu32 >> sr) as u64;
                     Ok((rt & !mask) | val)
                 }
@@ -718,8 +718,8 @@ impl<O, E, P> InstrumentedState<O, E, P>
                 // swl
                 0x2a => {
                     let sr = (rs & 0x3) << 3;
-                    let val = ((rt >> (32 - ((rs & 0x4) << 3))) & 0xFFFFFFFF) >> sr;
-                    let mask = (0xFFFFFFFFu32 >> sr) as u64;
+                    let val = ((rt & 0xFFFFFFFF) >> sr) << (32 - ((rs & 0x4) << 3));
+                    let mask = ((0xFFFFFFFFu32 >> sr) as u64) << (32 - ((rs & 0x4) << 3));
                     Ok((mem & !mask) | val)
                 }
                 // sw / sc
@@ -732,8 +732,8 @@ impl<O, E, P> InstrumentedState<O, E, P>
                 // swr
                 0x2e => {
                     let sl = 24 - ((rs & 0x3) << 3);
-                    let val = ((rt >> (32 - ((rs & 0x4) << 3))) & 0xFFFFFFFF) << sl;
-                    let mask = (0xFFFFFFFFu32 << sl) as u64;
+                    let val = ((rt & 0xFFFFFFFF) << sl) << (32 - ((rs & 0x4) << 3));
+                    let mask = ((0xFFFFFFFFu32 << sl) as u64) << (32 - ((rs & 0x4) << 3));
                     Ok((mem & !mask) | val)
                 }
                 _ => anyhow::bail!("Invalid opcode {:x}", opcode),
