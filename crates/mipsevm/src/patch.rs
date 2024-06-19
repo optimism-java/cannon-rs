@@ -4,6 +4,7 @@ use crate::{page, Address, State};
 use anyhow::Result;
 use elf::{abi::PT_LOAD, endian::AnyEndian, ElfBytes};
 use std::io::{self, Cursor, Read};
+use crate::utils::sign_extend;
 
 /// Symbols that indicate there is a patch to be made on an ELF file that was compiled from Go.
 pub(crate) const GO_SYMBOLS: [&str; 14] = [
@@ -37,7 +38,7 @@ pub fn load_elf(raw: &[u8]) -> Result<State> {
     let mut state = State {
         pc: elf.ehdr.e_entry,
         next_pc: elf.ehdr.e_entry + 4,
-        heap: 0x200000000000,
+        heap: 2000000000000000u64,
         ..Default::default()
     };
 
@@ -78,7 +79,7 @@ pub fn load_elf(raw: &[u8]) -> Result<State> {
             }
         }
 
-        if header.p_vaddr + header.p_memsz >= 1 << 47 {
+        if header.p_vaddr + header.p_memsz >= 1 << 63 {
             anyhow::bail!(
                 "Program segment {} out of 64-bit mem range: {} - {} (size: {})",
                 i,
@@ -141,34 +142,34 @@ pub fn patch_go(raw: &[u8], state: &mut State) -> Result<()> {
 /// - `Err(_)` if the patch failed
 pub fn patch_stack(state: &mut State) -> Result<()> {
     // Setup stack pointer
-    let ptr = 0x7F_FF_FF_FF_D0_00_u64;
+    let ptr = 0x7F_FF_FF_FF_FF_FF_D0_00_u64;
 
     // Allocate 1 page for the initial stack data, and 16KB = 4 pages for the stack to grow.
     state.memory.set_memory_range(
-        ptr - 4 * page::PAGE_SIZE as u64,
+        sign_extend(ptr - 4 * page::PAGE_SIZE as u64, 63),
         [0u8; page::PAGE_SIZE * 5].as_slice(),
     )?;
     state.registers[29] = ptr;
 
     #[inline(always)]
-    fn store_mem(st: &mut State, address: Address, value: u64) -> Result<()> {
-        st.memory.set_memory(address, value)
+    fn store_mem(st: &mut State, address: Address, value: u32) -> Result<()> {
+        st.memory.set_memory_b4(address, value)
     }
 
     // init argc, argv, aux on stack
-    store_mem(state, ptr + 8, 0x42)?; // argc = 0 (argument count)
-    store_mem(state, ptr + 8 * 2, 0x35)?; // argv[n] = 0 (terminating argv)
-    store_mem(state, ptr + 8 * 3, 0)?; // envp[term] = 0 (no env vars)
-    store_mem(state, ptr + 8 * 4, 6)?; // auxv[0] = _AT_PAGESZ = 6 (key)
-    store_mem(state, ptr + 8 * 5, 4096)?; // auxv[1] = page size of 4 KiB (value) - (== minPhysPageSize)
-    store_mem(state, ptr + 8 * 6, 25)?; // auxv[2] = AT_RANDOM
-    store_mem(state, ptr + 8 * 7, ptr + 8 * 9)?; // auxv[3] = address of 16 bytes containing random value
-    store_mem(state, ptr + 8 * 8, 0)?; // auxv[term] = 0
+    store_mem(state, sign_extend(ptr + 4, 63), 0x42)?; // argc = 0 (argument count)
+    store_mem(state, sign_extend(ptr + 4 * 2, 63), 0x35)?; // argv[n] = 0 (terminating argv)
+    store_mem(state, sign_extend(ptr + 4 * 3, 63), 0)?; // envp[term] = 0 (no env vars)
+    store_mem(state, sign_extend(ptr + 4 * 4, 63), 6)?; // auxv[0] = _AT_PAGESZ = 6 (key)
+    store_mem(state, sign_extend(ptr + 4 * 5, 63), 4096)?; // auxv[1] = page size of 4 KiB (value) - (== minPhysPageSize)
+    store_mem(state, sign_extend(ptr + 4 * 6, 63), 25)?; // auxv[2] = AT_RANDOM
+    state.memory.set_memory(sign_extend(ptr + 4 * 7, 63), sign_extend(ptr + 4 * 9, 63))?; // auxv[3] = random data
+    store_mem(state, sign_extend(ptr + 4 * 8, 63), 0)?; // auxv[term] = 0
 
     // 16 bytes of "randomness"
     state
         .memory
-        .set_memory_range(ptr + 8 * 9, b"4;byfairdiceroll".as_slice())?;
+        .set_memory_range(sign_extend(ptr + 4 * 9, 63), b"4;byfairdiceroll".as_slice())?;
 
     Ok(())
 }

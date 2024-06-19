@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::Result;
 use std::io::{self, BufReader, Read, Write};
-use crate::test_utils::BASE_ADDR_END;
+use crate::utils::sign_extend;
 
 impl<O, E, P> InstrumentedState<O, E, P>
     where
@@ -92,7 +92,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
             let link_reg = if opcode == 3 { 31 } else { 0 };
             // Take the top 4 bits of the next PC (its 256MB region), and concatenate with the
             // 26-bit offset
-            let target = self.state.next_pc & 0xF0000000 | ((instruction & 0x03FFFFFF) << 2) as u64;
+            let target = self.state.next_pc & 0xFFFFFFFFF0000000 | (((instruction & 0x03FFFFFF) << 2) as u64);
             return self.handle_jump(link_reg, target);
         }
 
@@ -246,7 +246,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                         // Nothing to do; Leave v0 and v1 zero, read nothing, and give no error.
                     }
                     Ok(Fd::PreimageRead) => {
-                        let effective_address = (a1 & 0xFFFFFFFC) as Address;
+                        let effective_address = (a1 & 0xFFFFFFFFFFFFFFFC) as Address;
 
                         self.track_mem_access(effective_address)?;
                         let memory = self.state.memory.get_memory_b4(effective_address)?;
@@ -319,10 +319,10 @@ impl<O, E, P> InstrumentedState<O, E, P>
                         v0 = a2;
                     }
                     Ok(Fd::PreimageWrite) => {
-                        let effective_address = a1 & 0xFFFFFFFC;
+                        let effective_address = a1 & 0xFFFFFFFFFFFFFFFC;
                         self.track_mem_access(effective_address as Address)?;
 
-                        let memory = self.state.memory.get_memory(effective_address as Address)?;
+                        let memory = self.state.memory.get_memory_b4(effective_address as Address)?;
                         let mut key = self.state.preimage_key;
                         let alignment = a1 & 0x3;
                         let space = 4 - alignment;
@@ -497,14 +497,14 @@ impl<O, E, P> InstrumentedState<O, E, P>
             }
             0x1a => {
                 // div
-                self.state.hi = (rs as i32 % rt as i32) as u64;
-                self.state.lo = (rs as i32 / rt as i32) as u64;
+                self.state.hi = sign_extend((rs as i32 % rt as i32) as u64, 32);
+                self.state.lo = sign_extend((rs as i32 / rt as i32) as u64, 32);
                 0
             }
             0x1b => {
                 // divu
-                self.state.hi = (rs as u32 % rt as u32) as u64;
-                self.state.lo = (rs as u32 / rt as u32) as u64;
+                self.state.hi = sign_extend((rs as u32 % rt as u32) as u64, 32);
+                self.state.lo = sign_extend((rs as u32 / rt as u32) as u64, 32);
                 0
             }
             _ => 0,
@@ -607,7 +607,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                 // sll
                 0 => Ok(sign_extend((rt & 0xFFFFFFFF) << ((instruction >> 6) & 0x1F), 32)),
                 // srl
-                2 => Ok((rt & 0xFFFFFFFF) >> ((instruction >> 6) & 0x1F)),
+                2 => Ok(sign_extend((rt & 0xFFFFFFFF) >> ((instruction >> 6) & 0x1F), 32)),
                 // sra
                 3 => {
                     let shamt = (instruction >> 6) & 0x1F;
@@ -616,7 +616,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                 // sllv
                 4 => Ok(sign_extend((rt & 0xFFFFFFFF) << (rs & 0x1F), 32)),
                 // srlv
-                6 => Ok((rt & 0xFFFFFFFF) >> (rs & 0x1F)),
+                6 => Ok(sign_extend((rt & 0xFFFFFFFF) >> (rs & 0x1F), 32)),
                 // srav
                 7 => {
                     let shamt = rs & 0x1F;
@@ -656,7 +656,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                     let fun = instruction & 0x3F;
                     match fun {
                         // mul
-                        0x02 => Ok(((rs as i32) * (rt as i32)) as u64),
+                        0x02 => Ok(sign_extend(((rs as i32) * (rt as i32)) as u64, 32)),
                         // clo / clz
                         0x20 | 0x21 => {
                             let mut rs = rs;
@@ -686,7 +686,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                     let sl = (rs & 0x3) << 3;
                     let val = ((mem >> (32 - ((rs & 0x4) << 3))) << sl) & 0xFFFFFFFF;
                     let mask = (0xFFFFFFFFu32 << sl) as u64;
-                    Ok((rt & !mask) | val)
+                    Ok(sign_extend((rt & !mask) | val, 32))
                 }
                 // lw / ll
                 0x23 | 0x30 => Ok(sign_extend((mem >> (32 - ((rs & 0x4) << 3))) & 0xFFFFFFFF, 32)),
@@ -699,7 +699,7 @@ impl<O, E, P> InstrumentedState<O, E, P>
                     let sr = 24 - ((rs & 0x3) << 3);
                     let val = ((mem >> (32 - ((rs & 0x4) << 3))) >> sr) & 0xFFFFFFFF;
                     let mask = (0xFFFFFFFFu32 >> sr) as u64;
-                    Ok((rt & !mask) | val)
+                    Ok(sign_extend((rt & !mask) | val, 32))
                 }
                 // sb
                 0x28 => {
@@ -741,24 +741,24 @@ impl<O, E, P> InstrumentedState<O, E, P>
         }
     }
 }
-
-/// Perform a sign extension of a value embedded in the lower bits of `data` up to
-/// the `index`th bit.
-///
-/// ### Takes
-/// - `data`: The data to sign extend.
-/// - `index`: The index of the bit to sign extend to.
-///
-/// ### Returns
-/// - The sign extended value.
-#[inline(always)]
-pub(crate) fn sign_extend(data: u64, index: u64) -> u64 {
-    let is_signed = (data >> (index - 1)) != 0;
-    let signed = ((1 << (64 - index)) - 1) << index;
-    let mask = (1 << index) - 1;
-    if is_signed {
-        (data & mask) | signed
-    } else {
-        data & mask
-    }
-}
+//
+// /// Perform a sign extension of a value embedded in the lower bits of `data` up to
+// /// the `index`th bit.
+// ///
+// /// ### Takes
+// /// - `data`: The data to sign extend.
+// /// - `index`: The index of the bit to sign extend to.
+// ///
+// /// ### Returns
+// /// - The sign extended value.
+// #[inline(always)]
+// pub(crate) fn sign_extend(data: u64, index: u64) -> u64 {
+//     let is_signed = (data >> (index - 1)) != 0;
+//     let signed = ((1 << (64 - index)) - 1) << index;
+//     let mask = (1 << index) - 1;
+//     if is_signed {
+//         (data & mask) | signed
+//     } else {
+//         data & mask
+//     }
+// }
