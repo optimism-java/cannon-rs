@@ -1,9 +1,9 @@
 //! This module contains the [InstrumentedState] definition.
 
+use crate::memory::PROOF_LEN;
 use crate::{traits::PreimageOracle, Address, State, StepWitness};
 use anyhow::Result;
 use std::io::{BufWriter, Write};
-use crate::memory::PROOF_LEN;
 
 pub(crate) const MIPS_EBADF: u64 = 0x9;
 pub(crate) const MIPS_EINVAL: u64 = 0x16;
@@ -39,10 +39,10 @@ pub struct InstrumentedState<O: Write, E: Write, P: PreimageOracle> {
 }
 
 impl<O, E, P> InstrumentedState<O, E, P>
-    where
-        O: Write,
-        E: Write,
-        P: PreimageOracle,
+where
+    O: Write,
+    E: Write,
+    P: PreimageOracle,
 {
     pub fn new(state: State, oracle: P, std_out: O, std_err: E) -> Self {
         Self {

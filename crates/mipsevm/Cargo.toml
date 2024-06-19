@@ -38,7 +38,7 @@ proptest = "1.4.0"
 
 [features]
 tracing = ["dep:tracing"]
-#simd-keccak = ["dep:keccak256-aarch64-simd"]
+simd-keccak = ["dep:keccak256-aarch64-simd"]
 
 [[bench]]
 name = "memory"

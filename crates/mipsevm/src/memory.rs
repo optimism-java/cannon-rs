@@ -64,7 +64,7 @@ impl Memory {
         }
 
         // Find the page and invalidate the address within it.
-        match self.page_lookup(address as u64 >> page::PAGE_ADDRESS_SIZE) {
+        match self.page_lookup(address >> page::PAGE_ADDRESS_SIZE) {
             Some(page) => {
                 let mut page = page.borrow_mut();
                 let prev_valid = !page.valid[1];
@@ -85,7 +85,8 @@ impl Memory {
         }
 
         // Find the generalized index of the first page covering the address
-        let mut g_index = (1u64 << (64 - page::PAGE_ADDRESS_SIZE)) | (address >> page::PAGE_ADDRESS_SIZE);
+        let mut g_index =
+            (1u64 << (64 - page::PAGE_ADDRESS_SIZE)) | (address >> page::PAGE_ADDRESS_SIZE);
         // Invalidate all nodes in the branch
         while g_index > 0 {
             self.nodes.insert(g_index, None);
@@ -277,7 +278,7 @@ impl Memory {
             anyhow::bail!("Unaligned memory access: {:x}", address);
         }
 
-        match self.page_lookup(address as u64 >> page::PAGE_ADDRESS_SIZE as u64) {
+        match self.page_lookup(address >> page::PAGE_ADDRESS_SIZE as u64) {
             Some(page) => {
                 let page_address = address as usize & page::PAGE_ADDRESS_MASK;
                 Ok(u32::from_be_bytes(
@@ -344,7 +345,7 @@ impl Memory {
             anyhow::bail!("Unaligned memory access: {:x}", address);
         }
 
-        match self.page_lookup(address as u64 >> page::PAGE_ADDRESS_SIZE as u64) {
+        match self.page_lookup(address >> page::PAGE_ADDRESS_SIZE as u64) {
             Some(page) => {
                 let page_address = address as usize & page::PAGE_ADDRESS_MASK;
                 Ok(u64::from_be_bytes(
@@ -452,8 +453,8 @@ impl Default for PageEntry {
 
 impl Serialize for Memory {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
+    where
+        S: serde::Serializer,
     {
         let mut page_entries: Vec<PageEntry> = self
             .pages
@@ -471,8 +472,8 @@ impl Serialize for Memory {
 
 impl<'de> Deserialize<'de> for Memory {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
+    where
+        D: serde::Deserializer<'de>,
     {
         let page_entries: Vec<PageEntry> = Vec::deserialize(deserializer)?;
 
@@ -525,7 +526,7 @@ impl<'a> Read for MemoryReader<'a> {
         let start = self.address as usize & page::PAGE_ADDRESS_MASK;
         let mut end = page::PAGE_SIZE;
 
-        if page_index == (end_address as u64 >> page::PAGE_ADDRESS_SIZE as u64) {
+        if page_index == (end_address >> page::PAGE_ADDRESS_SIZE as u64) {
             end = end_address as usize & page::PAGE_ADDRESS_MASK;
         }
         let n = end - start;
@@ -664,12 +665,12 @@ mod test {
                     keccak_concat_hashes(z.into(), z.into()).into(),
                     keccak_concat_hashes(z.into(), p3.into()).into(),
                 )
-                    .into(),
+                .into(),
                 keccak_concat_hashes(
                     keccak_concat_hashes(z.into(), p5.into()).into(),
                     keccak_concat_hashes(p6.into(), z.into()).into(),
                 )
-                    .into(),
+                .into(),
             );
             let r2 = memory
                 .merkleize_subtree(1 << (page::PAGE_KEY_SIZE - 3))

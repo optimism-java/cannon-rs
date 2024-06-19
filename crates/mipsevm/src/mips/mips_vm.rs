@@ -1,5 +1,6 @@
 //! This module contains the MIPS VM implementation for the [InstrumentedState].
 
+use crate::utils::sign_extend;
 use crate::{
     memory::MemoryReader,
     mips::instrumented::{MIPS_EBADF, MIPS_EINVAL},
@@ -9,13 +10,12 @@ use crate::{
 };
 use anyhow::Result;
 use std::io::{self, BufReader, Read, Write};
-use crate::utils::sign_extend;
 
 impl<O, E, P> InstrumentedState<O, E, P>
-    where
-        O: Write,
-        E: Write,
-        P: PreimageOracle,
+where
+    O: Write,
+    E: Write,
+    P: PreimageOracle,
 {
     /// Read the preimage for the given key and offset from the [PreimageOracle] server.
     ///
@@ -92,7 +92,8 @@ impl<O, E, P> InstrumentedState<O, E, P>
             let link_reg = if opcode == 3 { 31 } else { 0 };
             // Take the top 4 bits of the next PC (its 256MB region), and concatenate with the
             // 26-bit offset
-            let target = self.state.next_pc & 0xFFFFFFFFF0000000 | (((instruction & 0x03FFFFFF) << 2) as u64);
+            let target = self.state.next_pc & 0xFFFFFFFFF0000000
+                | (((instruction & 0x03FFFFFF) << 2) as u64);
             return self.handle_jump(link_reg, target);
         }
 
@@ -322,7 +323,10 @@ impl<O, E, P> InstrumentedState<O, E, P>
                         let effective_address = a1 & 0xFFFFFFFFFFFFFFFC;
                         self.track_mem_access(effective_address as Address)?;
 
-                        let memory = self.state.memory.get_memory_b4(effective_address as Address)?;
+                        let memory = self
+                            .state
+                            .memory
+                            .get_memory_b4(effective_address as Address)?;
                         let mut key = self.state.preimage_key;
                         let alignment = a1 & 0x3;
                         let space = 4 - alignment;
@@ -435,7 +439,8 @@ impl<O, E, P> InstrumentedState<O, E, P>
         self.state.pc = self.state.next_pc;
 
         if should_branch {
-            self.state.next_pc = prev_pc + 4 + (sign_extend((instruction & 0xFFFF) as u64, 16) << 2);
+            self.state.next_pc =
+                prev_pc + 4 + (sign_extend((instruction & 0xFFFF) as u64, 16) << 2);
         } else {
             // Branch not taken; proceed as normal.
             self.state.next_pc += 4;
@@ -605,9 +610,15 @@ impl<O, E, P> InstrumentedState<O, E, P>
 
             match fun {
                 // sll
-                0 => Ok(sign_extend((rt & 0xFFFFFFFF) << ((instruction >> 6) & 0x1F), 32)),
+                0 => Ok(sign_extend(
+                    (rt & 0xFFFFFFFF) << ((instruction >> 6) & 0x1F),
+                    32,
+                )),
                 // srl
-                2 => Ok(sign_extend((rt & 0xFFFFFFFF) >> ((instruction >> 6) & 0x1F), 32)),
+                2 => Ok(sign_extend(
+                    (rt & 0xFFFFFFFF) >> ((instruction >> 6) & 0x1F),
+                    32,
+                )),
                 // sra
                 3 => {
                     let shamt = (instruction >> 6) & 0x1F;
@@ -689,7 +700,10 @@ impl<O, E, P> InstrumentedState<O, E, P>
                     Ok(sign_extend((rt & !mask) | val, 32))
                 }
                 // lw / ll
-                0x23 | 0x30 => Ok(sign_extend((mem >> (32 - ((rs & 0x4) << 3))) & 0xFFFFFFFF, 32)),
+                0x23 | 0x30 => Ok(sign_extend(
+                    (mem >> (32 - ((rs & 0x4) << 3))) & 0xFFFFFFFF,
+                    32,
+                )),
                 // lbu
                 0x24 => Ok((mem >> (56 - ((rs & 0x7) << 3))) & 0xFF),
                 // lhu
